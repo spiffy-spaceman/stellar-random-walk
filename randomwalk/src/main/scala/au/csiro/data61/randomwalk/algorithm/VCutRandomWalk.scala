@@ -10,35 +10,37 @@ import scala.util.{Random, Try}
 case class VCutRandomWalk(context: SparkContext,
                           config: Params) extends RandomWalk {
 
-  def loadGraph(): RDD[(Int, (Array[Int]))] = {
+  def loadGraph(): RDD[(Int, (Array[Long]))] = {
     val bcDirected = context.broadcast(config.directed)
     val bcWeighted = context.broadcast(config.weighted) // is weighted?
     val bcRddPartitions = context.broadcast(config.rddPartitions)
     val bcPartitioned = context.broadcast(config.partitioned)
 
-    val edgePartitions: RDD[(Int, (Array[(Int, Int, Float)], Int))] = context.textFile(config
-      .input, minPartitions = config.rddPartitions).flatMap { triplet =>
-      val parts = triplet.split("\\s+")
+    val edgePartitions: RDD[(Long, (Array[(Long, Int, Float)], Int))] = context.textFile(
+      config.input,
+      minPartitions = config.rddPartitions)
+      .flatMap { triplet =>
+        val parts = triplet.split("\\s+")
 
-      val pId: Int = bcPartitioned.value && parts.length > 2 match {
-        case true => Try(parts(2).toInt).getOrElse(Random.nextInt(bcRddPartitions.value))
-        case false => Random.nextInt(bcRddPartitions.value)
-      }
+        val pId: Int = bcPartitioned.value && parts.length > 2 match {
+          case true => Try(parts(2).toInt).getOrElse(Random.nextInt(bcRddPartitions.value))
+          case false => Random.nextInt(bcRddPartitions.value)
+        }
 
-      // if the weights are not specified it sets it to 1.0
-      val weight = bcWeighted.value && parts.length > 3 match {
-        case true => Try(parts.last.toFloat).getOrElse(1.0f)
-        case false => 1.0f
-      }
+        // if the weights are not specified it sets it to 1.0
+        val weight = bcWeighted.value && parts.length > 3 match {
+          case true => Try(parts.last.toFloat).getOrElse(1.0f)
+          case false => 1.0f
+        }
 
-      val (src, dst) = (parts.head.toInt, parts(1).toInt)
-      val srcTuple = (src, (Array((dst, pId, weight)), pId))
-      if (bcDirected.value) {
-        Array(srcTuple, (dst, (Array.empty[(Int, Int, Float)], pId)))
-      } else {
-        Array(srcTuple, (dst, (Array((src, pId, weight)), pId)))
-      }
-    }.partitionBy(partitioner).persist(StorageLevel.MEMORY_AND_DISK)
+        val (src, dst) = (parts.head.toLong, parts(1).toLong)
+        val srcTuple = (src, (Array((dst, pId, weight)), pId))
+        if (bcDirected.value) {
+          Array(srcTuple, (dst, (Array.empty[(Long, Int, Float)], pId)))
+        } else {
+          Array(srcTuple, (dst, (Array((src, pId, weight)), pId)))
+        }
+      }.partitionBy(partitioner).persist(StorageLevel.MEMORY_AND_DISK)
 
     val vertexPartitions = edgePartitions.mapPartitions({ iter =>
       iter.map { case (src, (_, pId)) =>
@@ -48,7 +50,7 @@ case class VCutRandomWalk(context: SparkContext,
 
     val vertexNeighbors = edgePartitions.reduceByKey((x, y) => (x._1 ++ y._1, x._2)).cache
 
-    val g: RDD[(Int, (Int, Array[(Int, Int, Float)]))] =
+    val g: RDD[(Int, (Long, Array[(Long, Int, Float)]))] =
       vertexPartitions.join(vertexNeighbors).map {
         case (v, (pId, (neighbors, _))) => (pId, (v, neighbors))
       }.partitionBy(partitioner)
@@ -69,7 +71,7 @@ case class VCutRandomWalk(context: SparkContext,
         lAcc.add(e)
       }
       iter.foreach {
-        case (_, (neighbors: Array[(Int, Int, Float)], _)) =>
+        case (_, (neighbors: Array[(Long, Int, Float)], _)) =>
           vAccum.add(1)
           eAccum.add(neighbors.length)
       }
@@ -90,23 +92,23 @@ case class VCutRandomWalk(context: SparkContext,
     println(s"V Partitions: $vPartitions")
 
     val walkers = vertexNeighbors.map {
-      case (vId: Int, (_, pId: Int)) =>
+      case (vId: Long, (_, pId: Int)) =>
         (pId, Array(vId))
     }
 
     initWalkersToTheirPartitions(routingTable, walkers).persist(StorageLevel.MEMORY_AND_DISK)
   }
 
-  def initWalkersToTheirPartitions(routingTable: RDD[Int], walkers: RDD[(Int, Array[Int])]) = {
+  def initWalkersToTheirPartitions(routingTable: RDD[Int], walkers: RDD[(Int, Array[Long])]) = {
     routingTable.zipPartitions(walkers.partitionBy(partitioner)) {
       (_, iter2) =>
         iter2
     }
   }
 
-  def buildRoutingTable(graph: RDD[(Int, (Int, Array[(Int, Int, Float)]))]): RDD[Int] = {
+  def buildRoutingTable(graph: RDD[(Int, (Long, Array[(Long, Int, Float)]))]): RDD[Int] = {
 
-    graph.mapPartitionsWithIndex({ (id: Int, iter: Iterator[(Int, (Int, Array[(Int, Int,
+    graph.mapPartitionsWithIndex({ (id: Int, iter: Iterator[(Int, (Long, Array[(Long, Int,
       Float)]))]) =>
       iter.foreach { case (_, (vId, neighbors)) =>
         GraphMap.addVertex(vId, neighbors)
@@ -118,13 +120,13 @@ case class VCutRandomWalk(context: SparkContext,
 
   }
 
-  def prepareWalkersToTransfer(walkers: RDD[(Int, (Array[Int], Array[(Int, Float)], Boolean))]) = {
+  def prepareWalkersToTransfer(walkers: RDD[(Int, (Array[Long], Array[(Long, Float)], Boolean))]) = {
     walkers.mapPartitions({
       iter =>
         iter.map {
           case (_, (steps, prevNeighbors, completed)) =>
             val pId = GraphMap.getPartition(steps.last) match {
-              case Some(pId) => pId
+              case Some(_pId) => _pId
               case None => -1 // Must exists!
             }
             (pId, (steps, prevNeighbors, completed))

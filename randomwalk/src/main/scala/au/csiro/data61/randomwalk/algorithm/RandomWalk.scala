@@ -5,6 +5,7 @@ import org.apache.log4j.LogManager
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{HashPartitioner, SparkContext}
+import org.scalatest.path
 
 import scala.util.Random
 import scala.util.control.Breaks.{break, breakable}
@@ -28,7 +29,7 @@ trait RandomWalk extends Serializable {
     *
     * @return An RDD of one/multiple array(s) of vertex-ids (sequence of vertices) per graph vertex.
     */
-  def execute(): RDD[Array[Int]] = {
+  def execute(): RDD[Array[Long]] = {
     randomWalk(loadGraph())
   }
 
@@ -38,7 +39,7 @@ trait RandomWalk extends Serializable {
     * @return an RDD of (srcId, Array(srcId)). Array(srcId) in fact contains the first step of
     *         the randomwalk that is the source vertex itself.
     */
-  def loadGraph(): RDD[(Int, Array[Int])]
+  def loadGraph(): RDD[(Int, Array[Long])]
 
   /**
     * Initializes the first step of the randomwalk, that is a first-order randomwalk.
@@ -48,17 +49,17 @@ trait RandomWalk extends Serializable {
     *                  generator that can be used for test purposes as well.
     * @return a tuple including (partition-id, (path, current-vertex-neighbors, completed))
     */
-  def initFirstStep(paths: RDD[(Int, Array[Int])], nextFloat: () =>
-    Float = Random.nextFloat): RDD[(Int, (Array[Int], Array[(Int, Float)], Boolean))] = {
+  def initFirstStep(paths: RDD[(Int, Array[Long])], nextFloat: () =>
+    Float = Random.nextFloat): RDD[(Int, (Array[Long], Array[(Long, Float)], Boolean))] = {
     paths.mapPartitions({ iter =>
-      iter.map { case (pId, path: Array[Int]) =>
+      iter.map { case (pId, path: Array[Long]) =>
         val neighbors = GraphMap.getNeighbors(path.head)
         if (neighbors != null && neighbors.length > 0) {
           val (nextStep, _) = RandomSample(nextFloat).sample(neighbors)
           (pId, (path ++ Array(nextStep), neighbors, false))
         } else {
-          // It's a deaend.
-          (pId, (path, Array.empty[(Int, Float)], true))
+          // It's a dead end.
+          (pId, (path, Array.empty[(Long, Float)], true))
         }
       }
     }, preservesPartitioning = true
@@ -72,17 +73,17 @@ trait RandomWalk extends Serializable {
     * @param nextFloat
     * @return paths.
     */
-  def randomWalk(initPaths: RDD[(Int, Array[Int])], nextFloat: () => Float = Random
-    .nextFloat): RDD[Array[Int]] = {
+  def randomWalk(initPaths: RDD[(Int, Array[Long])], nextFloat: () => Float = Random
+    .nextFloat): RDD[Array[Long]] = {
     val bcP = context.broadcast(config.p)
     val bcQ = context.broadcast(config.q)
     val walkLength = context.broadcast(config.walkLength)
-    var totalPaths: RDD[Array[Int]] = context.emptyRDD[Array[Int]]
+    var totalPaths: RDD[Array[Long]] = context.emptyRDD[Array[Long]]
 
     for (_ <- 0 until config.numWalks) {
-      var unfinishedWalkers: RDD[(Int, (Array[Int], Array[(Int, Float)], Boolean))] = initFirstStep(
+      var unfinishedWalkers: RDD[(Int, (Array[Long], Array[(Long, Float)], Boolean))] = initFirstStep(
         initPaths, nextFloat)
-      var completedPaths: RDD[Array[Int]] = context.emptyRDD[Array[Int]].repartition(config
+      var completedPaths: RDD[Array[Long]] = context.emptyRDD[Array[Long]].repartition(config
         .rddPartitions)
       var remainingWalkers = Int.MaxValue
 
@@ -93,12 +94,12 @@ trait RandomWalk extends Serializable {
           prepareWalkersToTransfer(unfinishedWalkers))
 
         unfinishedWalkers = unfinishedWalkers.mapPartitions({ iter =>
-          iter.map { case (pId, (steps: Array[Int], prevNeighbors: Array[(Int, Float)],
+          iter.map { case (pId, (steps: Array[Long], prevNeighbors: Array[(Long, Float)],
           completed: Boolean)) =>
             var path = steps
             var isCompleted = completed
             val rSample = RandomSample(nextFloat)
-            var pNeighbors: Array[(Int, Float)] = prevNeighbors
+            var pNeighbors: Array[(Long, Float)] = prevNeighbors
             breakable {
               while (!isCompleted && path.length != walkLength.value + 2) {
                 val currNeighbors = GraphMap.getNeighbors(path.last)
@@ -183,11 +184,10 @@ trait RandomWalk extends Serializable {
     * @param walkers
     * @return
     */
-  def transferWalkersToTheirPartitions(routingTable: RDD[Int], walkers: RDD[(Int, (Array[Int],
-    Array[(Int, Float)], Boolean))]): RDD[(Int, (Array[Int], Array[(Int, Float)], Boolean))] = {
+  def transferWalkersToTheirPartitions(routingTable: RDD[Int], walkers: RDD[(Int, (Array[Long],
+    Array[(Long, Float)], Boolean))]): RDD[(Int, (Array[Long], Array[(Long, Float)], Boolean))] = {
     routingTable.zipPartitions(walkers.partitionBy(partitioner)) {
-      (_, iter2) =>
-        iter2
+      (_, iter2) => iter2
     }
   }
 
@@ -197,8 +197,8 @@ trait RandomWalk extends Serializable {
     * @param walkers
     * @return
     */
-  def filterUnfinishedWalkers(walkers: RDD[(Int, (Array[Int], Array[(Int, Float)], Boolean))])
-  : RDD[(Int, (Array[Int], Array[(Int, Float)], Boolean))] = {
+  def filterUnfinishedWalkers(walkers: RDD[(Int, (Array[Long], Array[(Long, Float)], Boolean))])
+  : RDD[(Int, (Array[Long], Array[(Long, Float)], Boolean))] = {
     walkers.filter(!_._2._3)
   }
 
@@ -208,8 +208,8 @@ trait RandomWalk extends Serializable {
     * @param walkers
     * @return completed paths.
     */
-  def filterCompletedPaths(walkers: RDD[(Int, (Array[Int], Array[(Int, Float)], Boolean))])
-  : RDD[Array[Int]] = {
+  def filterCompletedPaths(walkers: RDD[(Int, (Array[Long], Array[(Long, Float)], Boolean))])
+  : RDD[Array[Long]] = {
     walkers.filter(_._2._3).map { case (_, (paths, _, _)) =>
       paths
     }
@@ -221,8 +221,8 @@ trait RandomWalk extends Serializable {
     * @param walkers
     * @return
     */
-  def prepareWalkersToTransfer(walkers: RDD[(Int, (Array[Int], Array[(Int, Float)], Boolean))])
-  : RDD[(Int, (Array[Int], Array[(Int, Float)], Boolean))]
+  def prepareWalkersToTransfer(walkers: RDD[(Int, (Array[Long], Array[(Long, Float)], Boolean))])
+  : RDD[(Int, (Array[Long], Array[(Long, Float)], Boolean))]
 
   /**
     * Writes the given paths to the disk.
@@ -231,7 +231,7 @@ trait RandomWalk extends Serializable {
     * @param partitions
     * @param output
     */
-  def save(paths: RDD[Array[Int]], partitions: Int, output: String): Unit = {
+  def save(paths: RDD[Array[Long]], partitions: Int, output: String): Unit = {
 
     paths.map {
       case (path) =>

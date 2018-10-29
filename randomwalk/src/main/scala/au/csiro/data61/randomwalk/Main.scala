@@ -50,7 +50,7 @@ object Main extends SparkJob {
     * @param param input parameters.
     * @return
     */
-  def doRandomWalk(context: SparkContext, param: Params): RDD[Array[Int]] = {
+  def doRandomWalk(context: SparkContext, param: Params): RDD[Array[Long]] = {
     val rw = param.partitioned match {
       case true => VCutRandomWalk(context, param)
       case false => UniformRandomWalk(context, param)
@@ -74,7 +74,7 @@ object Main extends SparkJob {
     * @param paths
     * @return
     */
-  def convertPathsToIterables(paths: RDD[Array[Int]]) = {
+  def convertPathsToIterables(paths: RDD[Array[Long]]) = {
     paths.map { p =>
       p.map(_.toString).toList
     }

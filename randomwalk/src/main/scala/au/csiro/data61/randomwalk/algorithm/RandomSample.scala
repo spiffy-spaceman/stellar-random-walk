@@ -2,6 +2,7 @@ package au.csiro.data61.randomwalk.algorithm
 
 import scala.util.Random
 
+/* TODO: Use Alias sampling */
 case class RandomSample(nextFloat: () => Float = Random.nextFloat) extends Serializable {
 
 
@@ -9,7 +10,7 @@ case class RandomSample(nextFloat: () => Float = Random.nextFloat) extends Seria
     *
     * @return
     */
-  final def sample(edges: Array[(Int, Float)]): (Int, Float) = {
+  final def sample(edges: Array[(Long, Float)]): (Long, Float) = {
 
     val sum = edges.foldLeft(0.0) { case (w1, (_, w2)) => w1 + w2 }
 
@@ -26,9 +27,9 @@ case class RandomSample(nextFloat: () => Float = Random.nextFloat) extends Seria
 
   final def computeSecondOrderWeights(p: Float = 1.0f,
                                       q: Float = 1.0f,
-                                      prevId: Int,
-                                      prevNeighbors: Array[(Int, Float)],
-                                      currNeighbors: Array[(Int, Float)]): Array[(Int, Float)
+                                      prevId: Long,
+                                      prevNeighbors: Array[(Long, Float)],
+                                      currNeighbors: Array[(Long, Float)]): Array[(Long, Float)
     ] = {
     currNeighbors.map { case (dstId, w) =>
       var unnormProb = w / q // Default is that there is no direct link between src and
@@ -54,9 +55,9 @@ case class RandomSample(nextFloat: () => Float = Random.nextFloat) extends Seria
     */
   final def secondOrderSample(p: Float = 1.0f,
                               q: Float = 1.0f,
-                              prevId: Int,
-                              prevNeighbors: Array[(Int, Float)],
-                              currNeighbors: Array[(Int, Float)]): (Int, Float) = {
+                              prevId: Long,
+                              prevNeighbors: Array[(Long, Float)],
+                              currNeighbors: Array[(Long, Float)]): (Long, Float) = {
     val newCurrentNeighbors = computeSecondOrderWeights(p, q, prevId, prevNeighbors, currNeighbors)
     sample(newCurrentNeighbors)
   }

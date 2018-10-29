@@ -4,7 +4,7 @@
   <groupId>au.csiro.data61</groupId>
   <artifactId>randomwalk</artifactId>
   <name>second_order_randomwalk</name>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.0.2-SNAPSHOT</version>
   <url>https://github.com/data61/stellar-random-walk</url>
   <build>
     <testResources>

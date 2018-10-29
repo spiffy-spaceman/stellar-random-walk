@@ -14,15 +14,15 @@ case class UniformRandomWalk(context: SparkContext, config: Params) extends Rand
     *
     * @return
     */
-  def loadGraph(): RDD[(Int, Array[Int])] = {
+  def loadGraph(): RDD[(Int, Array[Long])] = {
     // the directed and weighted parameters are only used for building the graph object.
     // is directed? they will be shared among stages and executors
     val bcDirected = context.broadcast(config.directed)
     val bcWeighted = context.broadcast(config.weighted) // is weighted?
 
-    val g: RDD[(Int, Array[(Int, Float)])] = context.textFile(config.input, minPartitions
-      = config
-      .rddPartitions).flatMap { triplet =>
+    val g: RDD[(Long, Array[(Long, Float)])] = context.textFile(
+      config.input,
+      minPartitions = config.rddPartitions).flatMap { triplet =>
       val parts = triplet.split("\\s+")
       // if the weights are not specified it sets it to 1.0
 
@@ -31,9 +31,9 @@ case class UniformRandomWalk(context: SparkContext, config: Params) extends Rand
         case false => 1.0f
       }
 
-      val (src, dst) = (parts.head.toInt, parts(1).toInt)
+      val (src, dst) = (parts.head.toLong, parts(1).toLong)
       if (bcDirected.value) {
-        Array((src, Array((dst, weight))), (dst, Array.empty[(Int, Float)]))
+        Array((src, Array((dst, weight))), (dst, Array.empty[(Long, Float)]))
       } else {
         Array((src, Array((dst, weight))), (dst, Array((src, weight))))
       }
@@ -42,7 +42,7 @@ case class UniformRandomWalk(context: SparkContext, config: Params) extends Rand
       partitionBy(partitioner).
       persist(StorageLevel.MEMORY_AND_DISK)
 
-    routingTable = buildRoutingTable(g).persist(StorageLevel.MEMORY_ONLY)
+    routingTable = buildRoutingTable(g).persist(StorageLevel.MEMORY_ONLY) // note: check if only side-effects
     routingTable.count()
 
     val vAccum = context.longAccumulator("vertices")
@@ -58,7 +58,7 @@ case class UniformRandomWalk(context: SparkContext, config: Params) extends Rand
         lAcc.add(e)
       }
       iter.foreach {
-        case (_, (neighbors: Array[(Int, Float)])) =>
+        case (_, (neighbors: Array[(Long, Float)])) =>
           vAccum.add(1)
           eAccum.add(neighbors.length)
       }
@@ -80,16 +80,16 @@ case class UniformRandomWalk(context: SparkContext, config: Params) extends Rand
 
     g.mapPartitions({ iter =>
       iter.map {
-        case (vId: Int, _) =>
-          (vId, Array(vId))
+        case (vId: Long, _) =>
+          (vId.toInt, Array(vId)) //TODO: resolve this
       }
     }, preservesPartitioning = true
     )
   }
 
-  def buildRoutingTable(graph: RDD[(Int, Array[(Int, Float)])]): RDD[Int] = {
+  def buildRoutingTable(graph: RDD[(Long, Array[(Long, Float)])]): RDD[Int] = {
 
-    graph.mapPartitionsWithIndex({ (id: Int, iter: Iterator[(Int, Array[(Int, Float)])]) =>
+    graph.mapPartitionsWithIndex({ (id: Int, iter: Iterator[(Long, Array[(Long, Float)])]) =>
       iter.foreach { case (vId, neighbors) =>
         GraphMap.addVertex(vId, neighbors)
         id
@@ -100,12 +100,12 @@ case class UniformRandomWalk(context: SparkContext, config: Params) extends Rand
 
   }
 
-  def prepareWalkersToTransfer(walkers: RDD[(Int, (Array[Int], Array[(Int, Float)], Boolean))]) = {
+  def prepareWalkersToTransfer(walkers: RDD[(Int, (Array[Long], Array[(Long, Float)], Boolean))]) = {
     walkers.mapPartitions({
       iter =>
         iter.map {
-          case (_, (steps, prevNeighbors, completed)) => (steps.last, (steps, prevNeighbors,
-            completed))
+          case (_, (steps, prevNeighbors, completed)) =>
+            (steps.last.toInt, (steps, prevNeighbors, completed)) //TODO: resolve this
         }
     }, preservesPartitioning = false)
 

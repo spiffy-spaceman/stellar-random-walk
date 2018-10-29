@@ -10,9 +10,9 @@ class RandomSampleTest extends FunSuite {
     var rValue = 0.1f
     var random = RandomSample(nextFloat = () => rValue)
     assert(random.nextFloat() == rValue)
-    val e1 = (1, 1.0f)
-    val e2 = (2, 1.0f)
-    val e3 = (3, 1.0f)
+    val e1 = (1L, 1.0f)
+    val e2 = (2L, 1.0f)
+    val e3 = (3L, 1.0f)
     val edges = Array(e1, e2, e3)
     assert(random.sample(edges) == e1)
     rValue = 0.4f
@@ -25,12 +25,12 @@ class RandomSampleTest extends FunSuite {
 
   test("Test second order random selection") {
     val w1 = 1.0f
-    val e12 = (2, w1)
-    val e21 = (1, w1)
-    val e23 = (3, w1)
-    val e24 = (4, w1)
-    val e14 = (4, w1)
-    val e15 = (5, w1)
+    val e12 = (2L, w1)
+    val e21 = (1L, w1)
+    val e23 = (3L, w1)
+    val e24 = (4L, w1)
+    val e14 = (4L, w1)
+    val e15 = (5L, w1)
 
     val prevId = 1
     var prevNeighbors = Array(e12, e14, e15)

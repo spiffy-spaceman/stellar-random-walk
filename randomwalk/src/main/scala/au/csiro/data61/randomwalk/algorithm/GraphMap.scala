@@ -9,18 +9,20 @@ import scala.collection.mutable.{ArrayBuffer, HashMap}
   */
 
 object GraphMap {
+  private lazy val srcVertexMap: mutable.Map[Long, Int] = new HashMap[Long, Int]()
 
-  private lazy val srcVertexMap: mutable.Map[Int, Int] = new HashMap[Int, Int]()
   private lazy val offsets: ArrayBuffer[Int] = new ArrayBuffer()
   private lazy val lengths: ArrayBuffer[Int] = new ArrayBuffer()
-  private lazy val edges: ArrayBuffer[(Int, Float)] = new ArrayBuffer()
+  private lazy val edges: ArrayBuffer[(Long, Float)] = new ArrayBuffer() // dst vertex with weight
+
   private var indexCounter: Int = 0
   private var offsetCounter: Int = 0
+
   private var firstGet: Boolean = true
 
-  private lazy val vertexPartitionMap: mutable.Map[Int, Int] = new HashMap[Int, Int]()
+  private lazy val vertexPartitionMap: mutable.Map[Long, Int] = new HashMap[Long, Int]()
 
-  def addVertex(vId: Int, neighbors: Array[(Int, Int, Float)]): Unit = synchronized {
+  def addVertex(vId: Long, neighbors: Array[(Long, Int, Float)]): Unit = synchronized {
     srcVertexMap.get(vId) match {
       case None => {
         if (!neighbors.isEmpty) {
@@ -38,7 +40,7 @@ object GraphMap {
     }
   }
 
-  def addVertex(vId: Int, neighbors: Array[(Int, Float)]): Unit = synchronized {
+  def addVertex(vId: Long, neighbors: Array[(Long, Float)]): Unit = synchronized {
     srcVertexMap.get(vId) match {
       case None => {
         if (!neighbors.isEmpty) {
@@ -55,7 +57,7 @@ object GraphMap {
     }
   }
 
-  private def updateIndices(vId:Int, outDegree:Int): Unit =
+  private def updateIndices(vId: Long, outDegree: Int): Unit =
   {
     srcVertexMap.put(vId, indexCounter)
     offsets.insert(indexCounter, offsetCounter)
@@ -63,7 +65,7 @@ object GraphMap {
     indexCounter += 1
   }
 
-  def getPartition(vId: Int): Option[Int] = {
+  def getPartition(vId: Long): Option[Int] = {
     vertexPartitionMap.get(vId)
   }
 
@@ -80,7 +82,7 @@ object GraphMap {
     firstGet = true
   }
 
-  def addVertex(vId: Int): Unit = synchronized {
+  def addVertex(vId: Long): Unit = synchronized {
     srcVertexMap.put(vId, -1)
   }
 
@@ -106,11 +108,11 @@ object GraphMap {
     vertexPartitionMap.clear
   }
 
-  def getNeighbors(vid: Int): Array[(Int, Float)] = {
+  def getNeighbors(vid: Long): Array[(Long, Float)] = {
     srcVertexMap.get(vid) match {
       case Some(index) =>
         if (index == -1) {
-          return Array.empty[(Int, Float)]
+          return Array.empty[(Long, Float)]
         }
         val offset = offsets(index)
         val length = lengths(index)
